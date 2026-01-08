@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from .superbase_client import supabase
 from .schemas import AuthRequest, SignupRequest, RefreshRequest
-from .security import verify_supabase_jwt
+from .security import verify_token
 
 
 router = APIRouter(prefix="/auth", tags=["authentication routes"])
@@ -66,7 +66,7 @@ def refresh_token(payload: RefreshRequest):
     }
 
 @router.get("/protected")
-def protected(user = Depends(verify_supabase_jwt)):
+def protected(user = Depends(verify_token)):
     '''
     Dummy api to check authorization process of protected api endpoint
     '''

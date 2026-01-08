@@ -1,36 +1,157 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from .superbase_client import supabase
+import jwt
+import json
+import requests
+from jwt.algorithms import ECAlgorithm
+from functools import lru_cache
+from datetime import datetime
 from .config import settings
-
 
 security = HTTPBearer()
 
-def verify_supabase_jwt(
+
+@lru_cache(maxsize=1)
+def get_jwks():
+    """
+    Fetch JWKs from Supabase's well-known endpoint and cache them.
+    This reduces API calls while keeping keys up-to-date.
+    """
+    try:
+        jwks_url = f"{settings.SUPABASE_JWT_ISSUER}/.well-known/jwks.json"
+        response = requests.get(jwks_url, timeout=10)
+        response.raise_for_status()
+        jwks = response.json()
+        return jwks
+    except requests.RequestException as e:
+        print(f"Error fetching JWKs: {str(e)}")
+        raise Exception(f"Failed to fetch JWKs from Supabase: {str(e)}")
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JWKs response: {str(e)}")
+        raise Exception("Invalid JWKs response from Supabase")
+
+
+def get_public_key_by_kid(kid: str):
+    """
+    Get the correct public key based on the token's kid (Key ID).
+    This ensures we use the right key for signature verification.
+    """
+    try:
+        jwks = get_jwks()
+        
+        for jwk in jwks.get("keys", []):
+            if jwk.get("kid") == kid:
+                public_key = ECAlgorithm.from_jwk(json.dumps(jwk))
+                return public_key
+        available_kids = [jwk.get("kid") for jwk in jwks.get("keys", [])]
+        raise Exception(f"No JWK found for kid: {kid}. Available: {available_kids}")
+        
+    except Exception as e:
+        print(f"Error getting public key: {str(e)}")
+        raise
+
+
+def get_token_kid(token: str):
+    """
+    Extract the Key ID (kid) from the JWT header without verification.
+    """
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        return unverified_header.get("kid")
+    except Exception as e:
+        print(f"Error extracting kid from token: {str(e)}")
+        return None
+
+
+def verify_token(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    '''
-    Verify token by calling Supabase API
-    '''
+    """
+    Verify Supabase JWT token independently using ES256 algorithm.
+    Dynamically fetches the correct public key based on the token's kid.
+    """
     token = credentials.credentials
     
     try:
-        response = supabase.auth.get_user(token)
-        if response and response.user:
-            return {
-                "sub": response.user.id,
-                "email": response.user.email,
-                "user_metadata": response.user.user_metadata,
-                "role": response.user.role
-            }
-        else:
+        token_kid = get_token_kid(token)
+        
+        if not token_kid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
+                detail="Token missing kid in header",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-    except Exception as e:
-        print(f"Auth Error: {str(e)}")
+    
+        public_key = get_public_key_by_kid(token_kid)
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=["ES256"],
+            audience=settings.SUPABASE_JWT_AUDIENCE,
+            issuer=settings.SUPABASE_JWT_ISSUER,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "verify_iss": True
+            }
+        )
+        return {
+            "sub": payload.get("sub"),
+            "email": payload.get("email"),
+            "role": payload.get("role"),
+            "aud": payload.get("aud"),
+            "iss": payload.get("iss"),
+            "exp": payload.get("exp"),
+            "iat": payload.get("iat"),
+            "user_metadata": payload.get("user_metadata", {}),
+            "app_metadata": payload.get("app_metadata", {}),
+            "session_id": payload.get("session_id")
+        }
+        
+    except jwt.ExpiredSignatureError:
+        print("Token has expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+    except jwt.InvalidAudienceError:
+        print(f"Invalid audience. Expected: {settings.SUPABASE_JWT_AUDIENCE}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token audience",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidIssuerError:
+        print(f"Invalid issuer. Expected: {settings.SUPABASE_JWT_ISSUER}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token issuer",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidSignatureError as e:
+        print(f"Signature verification failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: Signature verification failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        print(f"Token validation error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        print(f"Unexpected auth error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+
