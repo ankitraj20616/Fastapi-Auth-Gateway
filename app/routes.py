@@ -95,4 +95,7 @@ def protected(user = Depends(verify_token)):
 def verify_with_supabase(
     result=Depends(verify_with_supabase_admin)
 ):
+    '''
+    Dummy api to check authorization process on Supabase of protected api endpoint using same token
+    '''
     return result

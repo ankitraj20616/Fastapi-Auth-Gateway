@@ -154,6 +154,9 @@ def verify_token(
 def verify_with_supabase_admin(
     user=Depends(verify_token)
 ):
+    """
+    Authenticate user in Supabase from same token.
+    """
     user_id = user["sub"]
 
     try:
