@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     JWT_EXPIRES_IN: int
     JWT_REFRESH_EXPIRES_IN_DAYS: int
     SUPABASE_SERVICE_ROLE_KEY: str
+    PROXY_TARGET_URL: str
 
     class Config:
         env_file= ".env"

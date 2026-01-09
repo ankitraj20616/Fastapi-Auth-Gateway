@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from .superbase_client import supabase
 from .schemas import AuthRequest, SignupRequest, RefreshRequest
 from .security import verify_token, verify_with_supabase_admin
 from .token_generator import generate_token_pair, generate_access_token_from_refresh_token
 from .config import settings
+from .cores import forward_authenticated_user
 
 router = APIRouter(prefix="/auth", tags=["authentication routes"])
 
@@ -99,3 +100,41 @@ def verify_with_supabase(
     Dummy api to check authorization process on Supabase of protected api endpoint using same token
     '''
     return result
+
+
+
+
+@router.api_route(
+    "/proxy/{target_path:path}",
+    methods= ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+)
+async def proxy_endpoint(
+    request: Request,
+    target_path: str,
+    user: dict = Depends(verify_token)
+):
+    if target_path.startswith('/'):
+        target_path = target_path[1:]
+    return await forward_authenticated_user(request, target_path, user)
+
+
+@router.get("/proxy/health", include_in_schema= False)
+async def proxy_health():
+    return {
+        "status": "ok",
+        "target_url": settings.PROXY_TARGET_URL,
+        "message": "Proxy server is running"
+    }
+
+
+# Debug endpoint to check route registration
+@router.get("/proxy/proxy-test")
+async def proxy_test(user: dict = Depends(verify_token)):
+    """
+    Simple test endpoint to verify proxy route is accessible
+    """
+    return {
+        "message": "Proxy route is accessible",
+        "user": user.get("email"),
+        "test_url": f"{settings.PROXY_TARGET_URL}/posts/1"
+    }
