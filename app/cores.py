@@ -43,11 +43,6 @@ async def forward_authenticated_user(
                 content= body,
                 follow_redirects= False
             )
-            # response_headers = dict(response.headers)
-            # response_headers.pop('content-encoding', None)            
-            # response_headers.pop('transfer-encoding', None)  
-            # response_headers.pop('connection', None) 
-
             content_type = response.headers.get('content-type', '')
             if 'application/json' in content_type:
                 try:

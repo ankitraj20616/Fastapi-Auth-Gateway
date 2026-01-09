@@ -113,13 +113,40 @@ async def proxy_endpoint(
     target_path: str,
     user: dict = Depends(verify_token)
 ):
+    '''
+    Universal proxy endpoint that forwards authenticated requests to another service.
+    
+    This endpoint:
+        Validates user authentication via JWT token
+        Forwards the request to PROXY_TARGET_URL with all original data intact
+        Preserves headers, body, query parameters, and HTTP method
+        Returns the target service's response as-is
+    
+    Usage Examples:
+        GET /auth/proxy/posts/1
+            forwards to TARGET_URL/posts/1
+        
+        POST /auth/proxy/posts
+            forwards to TARGET_URL/posts
+        
+        PUT /auth/proxy/posts/123
+            forwards to TARGET_URL/posts/123
+    
+    Headers added for downstream service:
+        X-User-ID: User's ID from JWT
+        X-User-Email: User's email from JWT
+        X-User-Role: User's role from JWT
+    '''
     if target_path.startswith('/'):
         target_path = target_path[1:]
     return await forward_authenticated_user(request, target_path, user)
 
 
-@router.get("/proxy/health", include_in_schema= False)
+@router.get("/proxy/health")
 async def proxy_health():
+    '''
+    Simple test endpoint to verify proxy route is accessible
+    '''
     return {
         "status": "ok",
         "target_url": settings.PROXY_TARGET_URL,
@@ -127,12 +154,11 @@ async def proxy_health():
     }
 
 
-# Debug endpoint to check route registration
 @router.get("/proxy/proxy-test")
 async def proxy_test(user: dict = Depends(verify_token)):
-    """
+    '''
     Simple test endpoint to verify proxy route is accessible
-    """
+    '''
     return {
         "message": "Proxy route is accessible",
         "user": user.get("email"),
