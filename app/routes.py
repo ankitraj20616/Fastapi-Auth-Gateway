@@ -102,6 +102,31 @@ def verify_with_supabase(
     return result
 
 
+@router.get("/proxy/proxy-test")
+async def proxy_test(user: dict = Depends(verify_token)):
+    '''
+    Simple test endpoint to verify proxy route is accessible
+    '''
+    return {
+        "message": "Proxy route is accessible",
+        "user": user.get("email"),
+        "test_url": f"{settings.PROXY_TARGET_URL}/posts/1"
+    }
+
+
+@router.get("/proxy/health")
+async def proxy_health():
+    '''
+    Simple test endpoint to verify proxy route is accessible
+    '''
+    return {
+        "status": "ok",
+        "target_url": settings.PROXY_TARGET_URL,
+        "message": "Proxy server is running"
+    }
+
+
+
 
 
 @router.api_route(
@@ -141,26 +166,3 @@ async def proxy_endpoint(
         target_path = target_path[1:]
     return await forward_authenticated_user(request, target_path, user)
 
-
-@router.get("/proxy/health")
-async def proxy_health():
-    '''
-    Simple test endpoint to verify proxy route is accessible
-    '''
-    return {
-        "status": "ok",
-        "target_url": settings.PROXY_TARGET_URL,
-        "message": "Proxy server is running"
-    }
-
-
-@router.get("/proxy/proxy-test")
-async def proxy_test(user: dict = Depends(verify_token)):
-    '''
-    Simple test endpoint to verify proxy route is accessible
-    '''
-    return {
-        "message": "Proxy route is accessible",
-        "user": user.get("email"),
-        "test_url": f"{settings.PROXY_TARGET_URL}/posts/1"
-    }
