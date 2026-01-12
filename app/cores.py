@@ -1,5 +1,5 @@
 from fastapi import Request, Response, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from .config import settings
 import httpx
 import json
@@ -34,35 +34,50 @@ async def forward_authenticated_user(
     body = await request.body()
 
     try:
-        async with httpx.AsyncClient(timeout= 30.0) as client:
-            response = await client.request(
-                method= request.method,
-                url= target_url,
-                params= query_params,
-                headers= headers,
-                content= body,
-                follow_redirects= False
-            )
-            content_type = response.headers.get('content-type', '')
-            if 'application/json' in content_type:
-                try:
-                    json_data= response.json()
-                    return JSONResponse(
-                        content=json_data,
-                        status_code=response.status_code
-                    )
-                except json.JSONDecodeError:
-                    return Response(
-                        content= response.text,
-                        status_code= response.status_code,
-                        media_type= content_type
-                    )
-            else:
+        # Default timeout of httpx is 5.0 sec so we need to exdent it's time for connection
+        client = httpx.AsyncClient(timeout= 30.0)
+        stream_response = await client.stream(
+            method= request.method,
+            url= target_url,
+            params= query_params,
+            headers= headers,
+            content= body,
+            # follow_redirects is True so that client will receive response and status code of final replay server so that client thinks that it's communicating with final server only not with the gatways
+            follow_redirects= True
+        )
+        await stream_response.aread()
+        content_type = stream_response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                json_data = stream_response.json()
+                await stream_response.aclose()
+                await client.aclose()
+                return JSONResponse(
+                    content= json_data,
+                    status_code= stream_response.status_code
+                )
+            except json.JSONDecodeError:
+                await stream_response.aclose()
+                await client.aclose()
                 return Response(
-                    content= response.content,
-                    status_code = response.status_code,
+                    content= stream_response.text,
+                    status_code= stream_response.status_code,
                     media_type= content_type
                 )
+            # If data received in response is in binary then we should send it in chunks to the client
+            async def generate():
+                try:
+                    async for chunk in stream_response.aiter_bytes():
+                        yield chunk
+                finally:
+                    await stream_response.aclose()
+                    await client.aclose()
+            return StreamingResponse(
+                generate(),
+                status_code = stream_response.status_code,
+                media_type= content_type,
+                headers= dict(stream_response.headers)
+            )
     except httpx.TimeoutException:
         raise HTTPException(
             status_code= status.HTTP_504_GATEWAY_TIMEOUT,
