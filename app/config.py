@@ -8,7 +8,14 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_JWT_ISSUER: str
     SUPABASE_JWT_AUDIENCE: str
-    SUPABASE_JWT_PUBLIC_KEY: str
+    JWT_PRIVATE_KEY: str
+    JWT_EXPIRES_IN: int
+    JWT_REFRESH_EXPIRES_IN_DAYS: int
+    SUPABASE_SERVICE_ROLE_KEY: str
+    PROXY_TARGET_URL: str
+    OTLP_URL: str
+    APP_VERSION: str
+    APP_ENVIRONMENT: str
 
     class Config:
         env_file= ".env"

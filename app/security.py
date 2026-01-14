@@ -7,6 +7,7 @@ from jwt.algorithms import ECAlgorithm
 from functools import lru_cache
 from datetime import datetime
 from .config import settings
+from .superbase_client import supabase_admin
 
 security = HTTPBearer()
 
@@ -35,20 +36,16 @@ def get_public_key_by_kid(kid: str):
     """
     Get the correct public key based on the token's kid (Key ID).
     This ensures we use the right key for signature verification.
+    First tries to fetch from Supabase, then falls back to static key.
     """
-    try:
-        jwks = get_jwks()
-        
-        for jwk in jwks.get("keys", []):
-            if jwk.get("kid") == kid:
-                public_key = ECAlgorithm.from_jwk(json.dumps(jwk))
-                return public_key
-        available_kids = [jwk.get("kid") for jwk in jwks.get("keys", [])]
-        raise Exception(f"No JWK found for kid: {kid}. Available: {available_kids}")
-        
-    except Exception as e:
-        print(f"Error getting public key: {str(e)}")
-        raise
+    jwks = get_jwks()
+    for jwk in jwks.get("keys", []):
+    
+        if jwk.get("kid") == kid:
+            public_key = ECAlgorithm.from_jwk(json.dumps(jwk))
+            return public_key
+    
+    raise Exception(f"No JWK found for kid: {kid}")
 
 
 def get_token_kid(token: str):
@@ -153,5 +150,40 @@ def verify_token(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
 
+def verify_with_supabase_admin(
+    user=Depends(verify_token)
+):
+    """
+    Authenticate user in Supabase from same token.
+    """
+    user_id = user["sub"]
+
+    try:
+        res = supabase_admin.auth.admin.get_user_by_id(user_id)
+
+        if not res or not res.user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in Supabase"
+            )
+
+        return {
+            "verified": True,
+            "verified_by": "supabase-admin",
+            "jwt_claims": user,
+            "supabase_user": {
+                "id": res.user.id,
+                "email": res.user.email,
+                "role": res.user.role,
+                "user_metadata": res.user.user_metadata,
+                "app_metadata": res.user.app_metadata,
+                "created_at": res.user.created_at
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Supabase admin verification failed: {str(e)}"
+        )
