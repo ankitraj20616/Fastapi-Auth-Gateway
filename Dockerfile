@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10-slim AS builder
 
 # Instructing python not to write byte code
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -21,7 +21,26 @@ RUN pip install --no-cache-dir poetry
 COPY pyproject.toml poetry.lock* ./
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-root --no-interaction --no-ansi
+    && poetry install --no-interaction --no-ansi --no-root
+
+
+# -------- RUNTIME STAGE --------
+FROM python:3.10-slim
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# ONLY runtime libs
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    libffi8 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed deps
+COPY --from=builder /usr/local/lib/python3.10 /usr/local/lib/python3.10
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY app ./app
 
