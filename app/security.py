@@ -7,9 +7,10 @@ from jwt.algorithms import ECAlgorithm
 from functools import lru_cache
 from datetime import datetime
 from .config import settings
-from .superbase_client import supabase_admin
+from .superbase_client import get_supabase_admin
 
 security = HTTPBearer()
+
 
 
 @lru_cache(maxsize=1)
@@ -160,6 +161,7 @@ def verify_with_supabase_admin(
     user_id = user["sub"]
 
     try:
+        supabase_admin = get_supabase_admin()
         res = supabase_admin.auth.admin.get_user_by_id(user_id)
 
         if not res or not res.user:

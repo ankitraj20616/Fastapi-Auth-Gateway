@@ -25,9 +25,15 @@ def setup_opentelemetry(app, service_name: str = "fastapi-auth-gateway"):
         "service.version": settings.APP_VERSION,
         "deployment.environment": environment
     })
+    # gRPC expects host:port only
+    otlp_endpoint = (
+        settings.OTLP_URL
+        .replace("http://", "")
+        .replace("https://", "")
+    )
     tracer_provider = TracerProvider(resource= resource)
     otlp_exporter = OTLPSpanExporter(
-        endpoint= settings.OTLP_URL,
+        endpoint= otlp_endpoint,
         insecure= True  # send data without encoding it in raw format, if we set it to false then we will first encode it using TLS then send it over network for safety in production
     )
     
@@ -45,7 +51,7 @@ def setup_opentelemetry(app, service_name: str = "fastapi-auth-gateway"):
     
     metric_reader = PeriodicExportingMetricReader(
         OTLPMetricExporter(
-            endpoint= settings.OTLP_URL,
+            endpoint= otlp_endpoint,
             insecure= True
         ),
         export_interval_millis= 5000  # export metrice after every 5 sec(5000 milli sec)
