@@ -1,15 +1,25 @@
 from supabase import create_client, Client
 from .config import settings
+import httpx
 
-'''
-This instance of supabase will help to connect with supabase sdk(running locally)
-'''
-supabase: Client = create_client(
-    settings.SUPABASE_PROJECT_URL,
-    settings.SUPABASE_ANON_KEY
-)
+def get_supabase() -> Client:
+    return create_client(
+        settings.SUPABASE_PROJECT_URL,
+        settings.SUPABASE_ANON_KEY,
+        options={
+            "http_client": httpx.Client(
+                timeout=httpx.Timeout(10.0, connect=5.0)
+            )
+        }
+    )
 
-supabase_admin = create_client(
-    settings.SUPABASE_PROJECT_URL,
-    settings.SUPABASE_SERVICE_ROLE_KEY
-)
+def get_supabase_admin() -> Client:
+    return create_client(
+        settings.SUPABASE_PROJECT_URL,
+        settings.SUPABASE_SERVICE_ROLE_KEY,
+        options={
+            "http_client": httpx.Client(
+                timeout=httpx.Timeout(10.0, connect=5.0)
+            )
+        }
+    )

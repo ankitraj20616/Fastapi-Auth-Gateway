@@ -1,14 +1,19 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from opentelemetry import trace
-from .superbase_client import supabase
+from .superbase_client import get_supabase
 from .schemas import AuthRequest, SignupRequest, RefreshRequest
 from .security import verify_token, verify_with_supabase_admin
 from .token_generator import generate_token_pair, generate_access_token_from_refresh_token
 from .config import settings
 from .cores import forward_authenticated_user
+import logging
+
+logging.error(f"SUPABASE_PROJECT_URL = {settings.SUPABASE_PROJECT_URL}")
 
 router = APIRouter(prefix="/auth", tags=["authentication routes"])
 tracer = trace.get_tracer(__name__)
+
+
 
 
 @router.post("/signup")
@@ -26,6 +31,7 @@ def signup(payload: SignupRequest):
             span.set_attribute("validation.status", "success")
         
         with tracer.start_as_current_span("supabase_signup"):
+            supabase = get_supabase()
             response = supabase.auth.sign_up({
                 "email": payload.email,
                 "password": payload.password
@@ -52,6 +58,7 @@ def login(payload: AuthRequest):
         span.set_attribute("user.email", payload.email)
         
         with tracer.start_as_current_span("supabase_authentication"):
+            supabase = get_supabase()
             response = supabase.auth.sign_in_with_password({
                 "email": payload.email,
                 "password": payload.password

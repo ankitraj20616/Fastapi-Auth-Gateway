@@ -1,0 +1,10 @@
+services:
+  auth-gateway:
+    build: .
+    image: ankitrajthakur803/fastapi-auth-gateway:1.0.0
+    container_name: auth-gateway
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: always
