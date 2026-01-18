@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str
     SUPABASE_JWT_ISSUER: str
     SUPABASE_JWT_AUDIENCE: str
-    JWT_PRIVATE_KEY: str
+    SUPABASE_JWT_SECRET: str
     JWT_EXPIRES_IN: int
     JWT_REFRESH_EXPIRES_IN_DAYS: int
     SUPABASE_SERVICE_ROLE_KEY: str
