@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request
 from opentelemetry import trace
 from .superbase_client import get_supabase
 from .schemas import AuthRequest, SignupRequest, RefreshRequest
-from .security import verify_token, verify_with_supabase_admin
+from .security import verify_token, verify_user_in_supabase
 from .token_generator import generate_token_pair, generate_access_token_from_refresh_token
 from .config import settings
 from .cores import forward_authenticated_user
@@ -114,7 +114,7 @@ def refresh_token(payload: RefreshRequest):
             span.set_attribute("error.message", str(e))
             print(f"Token refresh error: {str(e)}")
             raise HTTPException(
-                status=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token"
             )
 
@@ -135,18 +135,17 @@ def protected(user = Depends(verify_token)):
             "role": user.get("role")
         }
 
+@router.get("/protected/supabase")
+def protected(user=Depends(verify_user_in_supabase)):
+    '''
+    Dummy api to check authorization process of protected api endpoint via Supabase.
+    '''
+    return {
+        "ok": True,
+        "user": user
+        }
 
-@router.get("/verify-with-supabase")
-def verify_with_supabase(
-    result=Depends(verify_with_supabase_admin)
-):
-    '''
-    Dummy api to check authorization process on Supabase of protected api endpoint using same token
-    '''
-    with tracer.start_as_current_span("verify_with_supabase_endpoint") as span:
-        span.set_attribute("verification.method", "supabase_admin")
-        span.set_attribute("user.id", result.get("supabase_user", {}).get("id"))
-        return result
+
 
 
 @router.get("/proxy/proxy-test")

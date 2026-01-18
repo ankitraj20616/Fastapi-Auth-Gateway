@@ -6,20 +6,10 @@ def get_supabase() -> Client:
     return create_client(
         settings.SUPABASE_PROJECT_URL,
         settings.SUPABASE_ANON_KEY,
-        options={
-            "http_client": httpx.Client(
-                timeout=httpx.Timeout(10.0, connect=5.0)
-            )
-        }
     )
 
 def get_supabase_admin() -> Client:
     return create_client(
         settings.SUPABASE_PROJECT_URL,
         settings.SUPABASE_SERVICE_ROLE_KEY,
-        options={
-            "http_client": httpx.Client(
-                timeout=httpx.Timeout(10.0, connect=5.0)
-            )
-        }
     )

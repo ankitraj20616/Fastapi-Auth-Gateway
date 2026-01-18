@@ -1,29 +1,10 @@
-from jwt.algorithms import ECAlgorithm
 import jwt
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.backends import default_backend
 import uuid
 import json
 from datetime import datetime, timezone, timedelta
 from .config import settings
 
 
-def load_private_key():
-    '''
-    This method will load the private key for signing tokens.
-    The private key is in JWK format.
-    '''
-    try:
-        if hasattr(settings, "JWT_PRIVATE_KEY"):
-            private_jwk = json.loads(settings.JWT_PRIVATE_KEY)
-            private_key = ECAlgorithm.from_jwk(json.dumps(private_jwk))
-            kid = private_jwk.get("kid")
-            return private_key, kid
-        else:
-            raise Exception("JWT_PRIVATE_KEY is not found in settings/.env")
-    except Exception as e:
-        print(f"Error in loading private key, error: {str(e)}")
-        raise 
 
 def generate_access_token(
     user_id: str,
@@ -48,7 +29,7 @@ def generate_access_token(
         str: JWT access token
     '''
     try:
-        private_key, kid = load_private_key()
+        
         now = datetime.now(timezone.utc)
         exp_time = now + timedelta(seconds= expires_in_seconds)
         if not session_id:
@@ -88,9 +69,8 @@ def generate_access_token(
         }
         token = jwt.encode(
             payload,
-            private_key,
-            algorithm= "ES256",
-            headers= {"kid": kid}
+            settings.SUPABASE_JWT_SECRET,
+            algorithm="HS256"
         )
         return token
     except Exception as e:
@@ -116,7 +96,7 @@ def generate_refresh_token(
         str: JWT refresh token
     '''
     try:
-        private_key, kid = load_private_key()
+        
         now = datetime.now(timezone.utc)
         exp_time = now + timedelta(days= expires_in_days)
         if not session_id:
@@ -133,20 +113,19 @@ def generate_refresh_token(
         }
         token = jwt.encode(
             payload,
-            private_key,
-            algorithm="ES256",
-            headers= {"kid": kid}
+            settings.SUPABASE_JWT_SECRET,
+            algorithm="HS256"
         )
         return token
     except Exception as e:
         print(f"Error generating refresh token: {str(e)}")
         raise
-
 def generate_token_pair(
     user_id: str,
     email: str,
     role: str = "authenticated",
     user_metadata: dict = None,
+
     app_metadata: dict = None,
     access_token_expires_in: int = settings.JWT_EXPIRES_IN,
     refresh_token_expires_in_days: int = settings.JWT_REFRESH_EXPIRES_IN_DAYS
@@ -188,7 +167,7 @@ def get_user_data_from_supabase(user_id: str, decoded):
     '''
     This method will fetch current logged in user data from supabase from user id , we need this data in generating new access token from refresh token for current logged in user.
     '''
-    from .superbase_client import supabase
+    from .superbase_client import get_supabase_admin as supabase
     email = decoded.get("email")
     user_metadata = decoded.get("user_metadata", {})
     app_metadata = decoded.get("app_metadata", {})
@@ -224,13 +203,20 @@ def generate_access_token_from_refresh_token(refresh_token: str):
         dict: New token pair
     '''
     try:
-        private_key, kid = load_private_key()
-        from .security import get_public_key_by_kid, get_token_kid
-        token_kid = get_token_kid(refresh_token)
+        
         
         decoded = jwt.decode(
             refresh_token,
-            options={"verify_signature": False}  
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience=settings.SUPABASE_JWT_AUDIENCE,
+            issuer=settings.SUPABASE_JWT_ISSUER,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "verify_iss": True
+            }
         )
         
         if decoded.get("token_type") != "refresh":
@@ -245,8 +231,8 @@ def generate_access_token_from_refresh_token(refresh_token: str):
             email=data.get("email"),
             role=data.get("role"),
             user_metadata=data.get("user_metadata"),
-            app_metadata=data.get("app_metadata"),
             session_id=session_id,
+            app_metadata=data.get("app_metadata"),
             expires_in_seconds=3600
         )
         
@@ -261,31 +247,3 @@ def generate_access_token_from_refresh_token(refresh_token: str):
         raise
 
 
-def generate_new_key_pair():
-    '''
-    This method will generate a new ES256 key pair in JWK format, use this method only for initial setup or key rotation.
-    Store the generated key in .env file securely.
-    This method return dict containing private_jwk and public_jwk
-    '''
-    private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
-    public_key = private_key.public_key()
-    kid = str(uuid.uuid4())
-    private_jwk = json.loads(
-        ECAlgorithm.to_jwk(private_key, as_dict= False)
-    )
-    private_jwk['kid'] = kid
-    private_jwk['use'] = "sig"
-    private_jwk['alg'] = "ES256"
-
-    public_jwk = json.loads(
-        ECAlgorithm.to_jwk(public_key, as_dict= False)
-    )
-    public_jwk["kid"] = kid
-    public_jwk["use"] = "sig"
-    public_jwk["alg"] = "ES256"
-
-    return {
-        "private_jwk": private_jwk,
-        "public_jwk": public_jwk,
-        "kid": kid
-    }
